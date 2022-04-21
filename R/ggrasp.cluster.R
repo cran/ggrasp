@@ -21,21 +21,21 @@
 #' library(ggrasp);
 #' tree.file <- system.file("extdata", "Enter.kSNP.tree", package="ggrasp")
 #' rank.file.in <- system.file("extdata", "Enter.kSNP.ranks", package="ggrasp")
-#' Enter.tree <- ggrasp.load(tree.file, file.format = "tree", rank.file = rank.file.in);
+#' Enter.tree <- ggrasp.load(tree.file, file.format = "tree", rank.file = rank.file.in)
 #'
 #' #Clustering the tree using a threshold estimated by Gaussian Mixture Models (GMMs)
-#' \donttest{Enter.tree.cluster <- ggrasp.cluster(Enter.tree)}
+#' \\donttest{Enter.tree.cluster <- ggrasp.cluster(Enter.tree)}
 #'
 #'
 #' #Use print to get a list of the medoids selected
-#' \donttest{print(Enter.tree.cluster)}
+#' \\donttest{print(Enter.tree.cluster)}
 #'
 #' #Re-clustering the tree using a threshold estimated by the GMMs but without the distribution
 #' #cleaning (i.e. removing the overlapping and low count distributions)
-#' \donttestEnter.tree.reclust <- ggrasp.recluster(Enter.tree.cluster, z.limit=0, min.lambda = 0)}
+#' \\donttest{Enter.tree.reclust <- ggrasp.recluster(Enter.tree.cluster, z.limit=0, min.lambda = 0)}
 #'
 #' #Use plot to examine the tree with the clusters highlighted and the medoid genome names on the edge
-#' \donttest{plot(Enter.tree.cluster)}
+#' \\donttest{plot(Enter.tree.cluster)}
 #'
 #' #Additional printing and plotting options are availible with plot() and print(). 
 #' #For more information refer to ?plot.ggrasp and ?print.ggrasp
@@ -77,6 +77,10 @@ ggrasp.cluster = function(ggrasp.data, threshold, num.clusters, z.limit = 1, gmm
 		{
 			cat("Number of starting GMM out of range. Using default of 2\n\n");
 			gmm.start = 2;
+		}
+		if (gmm.max >= nrow(ggrasp.data@dist.mat))
+		{
+			gmm.max = nrow(ggrasp.data@dist.mat) -1;
 		}
 		gmm.first <- .make_gmm(as.dist(ggrasp.data@dist.mat), gmm.start, gmm.max, run.type);
 		if ("mModel" %in% class(gmm.first))
@@ -204,15 +208,15 @@ ggrasp.addRanks = function(x, rank.file)
 #' Enter.tree <- ggrasp.load(tree.file, file.format = "tree");
 #'
 #' #Clustering the tree using a threshold estimated by Gaussian Mixture Models (GMMs)
-#' \donttest{Enter.tree.cluster <- ggrasp.cluster(Enter.tree)}
+#' \\donttest{Enter.tree.cluster <- ggrasp.cluster(Enter.tree)}
 #'
 #'
 #' #Use print to get a list of the medoids selected
-#' \donttest{print(Enter.tree.cluster)}
+#' \\donttest{print(Enter.tree.cluster)}
 #'
 #' #Re-clustering the tree using a threshold estimated by the GMMs but without the distribution
 #' #cleaning (i.e. removing the overlapping and low count distributions)
-#' \donttest{Enter.tree.reclust <- ggrasp.recluster(Enter.tree.cluster, z.limit=0, min.lambda = 0)}
+#' \\donttest{Enter.tree.reclust <- ggrasp.recluster(Enter.tree.cluster, z.limit=0, min.lambda = 0)}
 #'
 #
 #' @export
@@ -262,9 +266,9 @@ ggrasp.recluster = function(x, z.limit=1, min.lambda=0.005, left.dist = 1)
 #subtrees using by cuting at the value given. Requires a rooted tree
 .get_tree_clusters = function(nj_tree, thrsh)
 {
-  if (class(nj_tree) != "phylo")
+  if (!is(nj_tree, "phylo"))
   {
-    if(class(nj_tree) == "hclust")
+    if(is(nj_tree,"hclust"))
     {
       nj_tree = as.phylo(nj_tree);
     }
@@ -274,7 +278,7 @@ ggrasp.recluster = function(x, z.limit=1, min.lambda=0.005, left.dist = 1)
       return(NULL);
     }
   }
-  if (!is.binary.tree(nj_tree))
+  if (!is.binary(nj_tree))
   {
     cat("\n\nThis function only works with binary trees...\n\nMaking a binary tree by randomly resolving tree...\n\n");
 	nj_tree = multi2di(nj_tree);
@@ -463,11 +467,18 @@ ggrasp.recluster = function(x, z.limit=1, min.lambda=0.005, left.dist = 1)
   cat(paste("Run with # ", i, " Gaussian Distribution\n", sep=""));
   if (run.type == "mixtools")
   {
-	old <- normalmixEM(n1, k = i)
+	old <- try(normalmixEM(n1, k = i), silent="T")
+	if(!is(old,"mixEM") )
+		{
+			cat("Normal Mixture Failed\n")
+		}
 	}
 	else
 	{
-		old <- unsupervised(n1, k = i)
+		old <- try(unsupervised(n1, k = i), silent="T");
+		if(!is(old,"mModel")){
+			cat("Normal Mixture Failed\n")
+		}
 	}
   #the previous gaussian mixture model
   orig <- old;
@@ -479,23 +490,33 @@ ggrasp.recluster = function(x, z.limit=1, min.lambda=0.005, left.dist = 1)
   for (i in (start.iter+1):max.iter)
   {
 	cat(paste("Run with # ", i, " Gaussian Distribution\n", sep=""));
-    
+    qt = 0;
 	if (run.type == "mixtools")
 	{
 		# mu = seq(min(n1), max(n1), (max(n1)-min(n1))/(i-1))
-		new <- normalmixEM(n1, k = i, verb = F, maxrestarts=5);
-		if(class(new) != "mixEM" )
+		new <- try(normalmixEM(n1, k = i, verb = F, maxrestarts=5), silent="T");
+		if(!is(new,"mixEM"))
 		{
-			cat("Normal Mixture Failed")
-			break;
+			cat("Normal Mixture Failed. Stopping..\n")
+			new = old;
+			qt = 1;
 		}
 		j1 <- new$loglik - old$loglik;
 	}
 	else
 	{
-		new <- unsupervised(n1, k = i)
-
-		j1 <- new$likelihood - old$likelihood;
+		new <- try(unsupervised(n1, k = i), silent=TRUE)
+		if(!is(new,"mModel")){
+			cat("Normal Mixture Failed. Stopping...\n");
+			new = old;
+			qt = 1;
+		}
+		else{
+			j1 <- new$likelihood - old$likelihood;
+		}
+	}
+	if (qt == 1){
+		break;
 	}
 	if (!is.null(j1))
 	{
